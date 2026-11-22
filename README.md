@@ -36,6 +36,20 @@ Herdr already ships a skill that teaches an agent its CLI (`herdr --skill`). her
 | Labels like `myapp · PROJ-123 short title` and `myapp · reviewer-1: review diff`. | Sidebar stays readable with several projects. | Give your own format in CLAUDE.md. |
 | Claude helpers start with `--permission-mode auto` and `CLAUDE_CODE_AUTO_CONNECT_IDE=false`. | Helpers don't block on every command or steal the IDE connection. The contract's LIMITS block is what contains them. | Say so in CLAUDE.md. |
 
+## Agent model routing
+
+You can define which AI model handles specific tasks. Create `.claude/herdr-routing.json` in your project:
+
+```json
+{
+  "review": "claude-opus-5-5",
+  "edit": "claude-sonnet-5-5",
+  "investigate": "claude-haiku-5-5"
+}
+```
+
+The skill checks this file (then `~/.claude/herdr-routing.json`) and passes `--model <model>` to helpers when the task role matches a key.
+
 ## License
 
 MIT

@@ -35,6 +35,8 @@ These are defaults. The user's own instructions (CLAUDE.md, AGENTS.md, or what t
 | The coordinator only works in its own workspace's checkout. Work in another repository or worktree is done by a helper there. | Keeps the workspace↔checkout mapping and prevents orphaned panes when a worktree is removed. |
 | Worktree workspaces and helper panes are labeled with the project name first (see "Names and orientation"). | With several projects open, `PROJ-123` alone in the sidebar says nothing. |
 | Claude helpers start with `--permission-mode auto` and `CLAUDE_CODE_AUTO_CONNECT_IDE=false`. | Without auto mode the helper blocks on every command; without the variable it takes the IDE connection away from the coordinator. |
+| Agent model selection follows routing policy. | Read `.claude/herdr-routing.json` (or `~/.claude/herdr-routing.json`). If a model is defined for the agent's task/role, pass `--model <model>`. Otherwise, use session default. |
+| Small edits (typos, 1-3 lines) can be done in the main checkout without a worktree. | Avoid overhead of spin-up for minimal changes. | Always use worktree via "create worktree for..." command. |
 
 **Announce a convention the first time it changes something.** The first time in a session that a convention does something the user did not ask for, say so in one line and say how to turn it off. For example: "Opening a worktree so main stays clean. Say 'work here' or set this in CLAUDE.md to turn it off." Put that line in the same message as any question the step needs (such as the project name). A convention the user's instructions already turned off is not announced.
 
@@ -108,20 +110,22 @@ The sidebar groups a worktree workspace right under its repository's workspace; 
 
 1. `herdr pane split --current --direction right --cwd "$(git rev-parse --show-toplevel)" --env CLAUDE_CODE_AUTO_CONNECT_IDE=false --no-focus`. The checkout root, not `$PWD`: the helper does not inherit a subdirectory. Read the id from `.result.pane.pane_id`.
 2. Rename the pane (`herdr pane rename <id> "<label>"`, format from "Names and orientation"; this also applies to a worktree root pane). Generate a session id (`python3 -c 'import uuid;print(uuid.uuid4())'` or `uuidgen`) and start the helper:
-   `herdr agent start <role>-<n> --kind claude --pane <id> -- --permission-mode auto --session-id <uuid>`.
+   `herdr agent start <role>-<n> --kind claude --pane <id> -- --permission-mode auto --session-id <uuid> [--model <model>]`.
+	
+	**Before step 2**: Check for a routing policy file (`.claude/herdr-routing.json` or `~/.claude/herdr-routing.json`) containing `{ "review": "claude-opus-5-5", ... }`. If the `<role>` exists as a key, append `--model <value>` to the command.
    A pane that did not come from the split in step 1 (worktree root pane, reopened pane): before `agent start`, `herdr pane run <id> "export CLAUDE_CODE_AUTO_CONNECT_IDE=false"`. `worktree create` does not accept `--env`.
    Why no IDE: an IDE extension serves one Claude Code session at a time, and the last one to connect wins. With `autoConnectIde` on, every Claude started in a folder open in the IDE connects by itself, and the helper takes the IDE away from the coordinator (notice "Visual Studio Code switched to another Claude Code session"): the coordinator loses selection, in-editor diff and diagnostics until the user runs `/ide`. With the variable set, the helper starts with `/ide` → None and the IDE stays with the coordinator. Several coordinators: the last one started holds it; the user switches with `/ide`.
    Name = role plus numeric suffix: `reviewer-1`, `tester-1`. Record name, pane and session id in the helper table (section "Several helpers").
    Why auto mode: without it Claude starts in default mode, which asks for approval before every command, and the helper sits `blocked` ("needs you" in the sidebar) on every `git diff` and on the return `herdr agent prompt` itself. Auto mode does not replace LIMITS: in testing it let through even a POST to an external service. The contract is what contains the helper.
    Codex (`--kind codex`) only when the user asks, and without those flags: with `-a never` its sandbox denies the return `herdr agent prompt`, and startup dialogs (update, hook review) leave it `blocked`. A Codex helper will ask the user for approval in its pane, gets session id `-` in the table and cannot be resumed with step 9: if needed again, start a new one.
-3. `herdr agent prompt <name> "<contract below>"` **without `--wait`**. Confirm with `herdr agent get <name>` that it went `working`.
+3. Save the contract to `.claude/herdr/contracts/<session_id>.json` (JSON containing `session_id`, `pane_id`, `project`, `role`, `created_at`, `contract`). Then `herdr agent prompt <name> "<contract below>"` **without `--wait`**. Confirm with `herdr agent get <name>` that it went `working`.
 4. Arm the safety net in the background (a background shell command):
    `herdr agent wait <name> --timeout 900000`. It fires on `done`, `idle` or `blocked`.
 5. Go back to your own work.
 6. A message starting with `<from: name>` arrived: that is the report. Handle it, give each item a disposition, continue.
 7. The safety net fired without a report: `herdr agent get`. If `blocked`, read the screen and ask the user before sending any key. If `done` or `idle`, `herdr agent read <name> --source recent-unwrapped --lines 200`.
 8. Report handled: `herdr agent get <name>`. If `blocked`, send nothing (the Enter of `/exit` could confirm the open dialog); follow step 7. If `idle` or `done`, end it with `herdr agent prompt <name> "/exit"` and confirm in `herdr agent list` that the name is gone; mark it "ended" in the table. An agent left alive after finishing shows `done` in the sidebar until the user opens that pane, and there is no way to mark it seen without stealing their focus. `/exit` ends only the agent: the pane stays, goes back to a shell and keeps its label. This applies to helpers the coordinator started; an agent the user opened, only when asked.
-9. Need the helper again (a follow-up, a question about what it read): in the same pane, `herdr agent start <name> --kind claude --pane <id> -- --permission-mode auto --resume <session-id>`. The whole conversation comes back; from there, steps 3 to 8 again (prompt, safety net, `/exit`). The user can do the same by hand with `claude --resume <session-id>` in the pane. Pane closed in the meantime: in the main checkout, steps 1 and 2 with the same label and `--resume` instead of `--session-id`; in a worktree whose workspace is gone, reopen it with `herdr worktree open --cwd <repo> --path <checkout path> --no-focus` and use the root pane. Session id lost: `claude --resume` with no id, in the pane, lists that directory's sessions for the user to pick.
+9. Need the helper again (a follow-up, a question about what it read): in the same pane, `herdr agent start <name> --kind claude --pane <id> -- --permission-mode auto --resume <session-id>`. The whole conversation comes back; from there, steps 3 to 8 again (prompt, safety net, `/exit`). The user can do the same by hand with `claude --resume <session-id>` in the pane. Pane closed in the meantime: in the main checkout, steps 1 and 2 with the same label and `--resume` instead of `--session-id`; in a worktree whose workspace is gone, reopen it with `herdr worktree open --cwd <repo> --path <checkout path> --no-focus` and use the root pane. Session id lost or resume fails: read `.claude/herdr/contracts/<session_id>.json` to restore contract context, then start a new session using the saved contract without prompting the user.
 10. Do not close a pane unless the user asks. A request to remove a worktree authorizes closing the panes and agents inside its checkout (see `references/removing-worktrees.md`), and only those.
 
 ## Helper contract
@@ -132,8 +136,9 @@ Every prompt to a helper has these six blocks, in this order. None is optional.
 ROLE: <one line: what the helper is, e.g. read-only reviewer>
 CONTEXT: <repo, branch, what another agent is editing at the same time>
 TASK: <what to do, criteria, what to ignore>
+COMPARISON_BASE: <base ref for diff, e.g. origin/main, HEAD~1> — if CLAUDE.md lacks this, default to `origin/main`.
 LIMITS: do not edit files; do not run git commit/push/checkout/stash; do not run commands that write
-  to shared environments (<list the repo's>); if you need an approval, stop and say so in the RETURN.
+  to shared environments (<list the repo's or default to `git checkout/merge/push/commit`>); if you need an approval, stop and say so in the RETURN.
 FORMAT: <shape of the result, short; end with the line END-<name>>
 RETURN: when done, run exactly:
   herdr agent prompt <RETURN> "<from: <name>> <one-line status>

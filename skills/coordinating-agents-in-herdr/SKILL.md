@@ -19,6 +19,12 @@ The helper delivers its result into the coordinator's input with `herdr agent pr
 
 2. Before your first `herdr` command, if Herdr's own skill is not already in your context, run `herdr --skill` and read its output. A plain question or lookup that needs no `herdr` command skips this. It is the authority on commands, IDs and safety rules; this skill only adds the coordination protocol on top of it. A request for a worktree counts as an explicit request to use Herdr.
 
+3. **Coordinator model selection**. Ask the user which model should act as coordinator:
+   - `claude-fable-5-2` (high reasoning, best for architecture tasks)
+   - `claude-opus-5-5` (same as fable, alternative)
+   - Other specific model if they have one in mind
+   Record the choice in `.claude/coordinator-model.txt` and pass `--model <chosen>` to the first `herdr agent start` that becomes the coordinator. If no preference, default to `claude-fable-5-2`.
+
 ## Answer here or delegate
 
 - **Questions, lookups and reading** happen right where you are, including the main checkout. No worktree, no helper.

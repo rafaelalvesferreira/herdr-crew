@@ -8,7 +8,7 @@
     {
       "name": "herdr-crew",
       "description": "Skills for running a crew of coding agents inside Herdr: delegate to helper agents in panes and get their reports back, isolate work in worktrees, watch long commands, fix pane size.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "./",
       "author": {
         "name": "Rafael Ferreira"

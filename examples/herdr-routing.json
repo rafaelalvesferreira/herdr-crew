@@ -1,0 +1,7 @@
+{
+  "coordinator": "opus",
+  "reviewer": "opus",
+  "builder": "sonnet",
+  "tester": "sonnet",
+  "investigator": "haiku"
+}

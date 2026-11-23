@@ -1,7 +1,6 @@
 {
   "coordinator": "opus",
+  "default": "sonnet",
   "reviewer": "opus",
-  "builder": "sonnet",
-  "tester": "sonnet",
-  "investigator": "haiku"
+  "subagent": "sonnet"
 }

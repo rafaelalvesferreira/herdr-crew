@@ -42,10 +42,14 @@ Herdr already ships a skill that teaches an agent its CLI (`herdr --skill`). her
 By default every agent uses your default model and the skill never asks. To pick models per role, create `.claude/herdr-routing.json` in your project (or `~/.claude/herdr-routing.json` for all projects):
 
 ```json
-{ "coordinator": "opus", "reviewer": "opus", "builder": "sonnet", "investigator": "haiku" }
+{ "coordinator": "opus", "default": "sonnet", "reviewer": "opus", "subagent": "sonnet" }
 ```
 
-The key is the agent's role: a helper named `reviewer-1` uses `reviewer`; the coordinator started in a new worktree uses `coordinator`. Values are model ids or aliases accepted by `claude --model`. See `examples/herdr-routing.json`.
+The key is the agent's role: a helper named `reviewer-1` uses `reviewer`; the coordinator started in a new worktree uses `coordinator`. `default` covers every role without its own key, so one global file pins the model of every helper. `subagent` is the model for the subagents of a `lead` helper (set through `CLAUDE_CODE_SUBAGENT_MODEL` in its pane). Without a routing file a helper runs on your Claude Code default model, which is not necessarily the model your coordinator is on. The "where am I" map shows the model each agent is really answering with. Values are model ids or aliases accepted by `claude --model`. See `examples/herdr-routing.json`.
+
+## Splitting a task: the `lead` role
+
+For a change with three or more independent parts, the coordinator can start one `lead` helper instead of a `builder`. The coordinator writes the plan (each part's files, its interface and a check command); the lead runs one subagent per part, integrates, runs the check and reports once. The expensive model plans and reviews; the cheaper ones write. It is used only when the parts touch different files, the interfaces can be fixed up front and a command can prove the result.
 
 ## First run in a repository
 

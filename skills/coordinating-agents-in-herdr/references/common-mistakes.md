@@ -29,5 +29,8 @@
 | `git worktree add` directly inside Herdr | Worktree without a workspace, invisible in the sidebar. `crew.py worktree-create`. |
 | Removing a worktree by hand, or deleting the directory after `workspace close` | Orphaned "(deleted)" panes. `crew.py worktree-remove` (`removing-worktrees.md`). |
 | Making a small edit in a checkout while a helper is editing it | One editor per working tree. Wait for the report. |
+| Using a `lead` for a task with two parts, or parts that share a file, or no command to check the result | A regular `builder`. Pieces written apart that do not fit cost more than the split saves. |
+| Leaving the plan for the lead to write | You write PLAN and CHECK: the lead has none of the conversation's context. |
+| Assuming a helper runs on the coordinator's model | Without a routing key it runs on the user's Claude Code default. `map` shows the real model. |
 | Asking the user which model the coordinator or a helper should use | Routing file if present, otherwise the user's default. |
 | Saving contracts, reports or tables inside the checkout | Dirties `git status` and blocks removal. Use the script's `state_dir`. |

@@ -6,7 +6,7 @@
 python3 "$CREW" map
 ```
 
-Read-only. Start the answer with one line from `you_are_here`: pane, workspace, checkout path, branch. Then show `rows` as a table grouped by `project`, with columns workspace, branch, pane, agent, status, session id, and mark the row with `"here": true`. A main-checkout workspace is already grouped with the project of its worktrees; the rest is under "no project". Nothing is renamed or closed while answering.
+Read-only. Start the answer with one line from `you_are_here`: pane, workspace, checkout path, branch. Then show `rows` as a table grouped by `project`, with columns workspace, branch, pane, agent, status, model, session id, and mark the row with `"here": true`. A main-checkout workspace is already grouped with the project of its worktrees; the rest is under "no project". Nothing is renamed or closed while answering.
 
 ## Labels
 

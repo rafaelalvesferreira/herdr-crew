@@ -2,13 +2,13 @@
 
 ## Flow
 
-1. **Start.** Roles: `reviewer` and `investigator` (read-only; started without the edit tools), `tester` (runs or writes tests), `builder` (edits code).
+1. **Start.** Roles: `reviewer` and `investigator` (read-only; started without the edit tools), `tester` (runs or writes tests), `builder` (edits code), `lead` (edits code by splitting it among subagents; section "Lead").
 
    ```bash
    python3 "$CREW" helper-start --project "<project>" --role reviewer --task "<task in a few words>"
    ```
 
-   `<project>`: see `starting-work.md`, "Project name". The script picks the free name (`reviewer-1`), reuses an ended helper pane of the project or splits a new one at the checkout root, labels it `<project> · <name>: <task>`, applies the routing file, starts the agent, and writes a contract skeleton. It returns `name`, `pane_id`, `session_id`, `task_id`, `contract_file`, `report_file`.
+   `<project>`: see `starting-work.md`, "Project name". The script picks the free name (`reviewer-1`), reuses an ended helper pane of the project or splits a new one at the checkout root, labels it `<project> · <name>: <task>`, applies the routing file, starts the agent, and writes a contract skeleton. It returns `name`, `pane_id`, `session_id`, `task_id`, `model`, `contract_file`, `report_file`. Tell the user in one line that it started and on which model ("`reviewer-1` started on opus").
    A helper in another worktree's root pane: add `--pane <root_pane>`. Codex only when the user names Codex ("a second opinion" alone means a Claude helper): `--kind codex` (it asks the user for approvals in its pane and cannot be resumed).
    `blocked_at_startup`: a dialog is open before the first prompt, usually folder trust. Only the user answers it. Tell them in one line which pane waits and why ("`reviewer-1` in pane w2:p3 waits for you to trust `~/code/shared-lib`"), arm the background wait from the hint, and keep working: the contract file already exists, so fill it now (step 2) and send (step 3) when the wait fires. A wait that times out is armed again; the user being away changes nothing.
 2. **Fill the contract.** Edit `contract_file`: replace every `<FILL: …>`, change nothing else (section "Helper contract").
@@ -29,6 +29,23 @@ The skeleton has seven blocks, in this order, none optional: ROLE, CONTEXT, TASK
 - **COMPARISON_BASE**: what "the diff" means here. The base the user or the repository names; `HEAD` for "my uncommitted changes"; otherwise `origin/<default branch>` (`git symbolic-ref --short refs/remotes/origin/HEAD`); `n/a` when nothing is compared.
 - **LIMITS**: for `builder` and `tester`, fill the first clause: `edit only inside <worktree path>`, or `do not edit files` for a task that only runs things (a tester running the suite). A run-only helper does not count as an editor of the tree. Replace the shared-environment placeholder with the repository's concrete commands (`do not run migrations against a shared database; do not run terraform apply; do not deploy`); when it documents none, keep the fallback sentence. Auto mode and the tool restriction do not replace this block: a shell command can still write.
 - **FORMAT**: the shape you want back, short.
+
+## Lead
+
+A `lead` is one helper that splits a task among subagents inside its own pane and hands back one integrated result. You decide it, and you write the plan: you have the user's request, the decisions made and the architecture.
+
+Use a lead only when all three hold; one missing means a regular `builder`:
+
+1. The task has three or more parts that touch different files.
+2. The interface between the parts can be written down before any part starts (signatures, types, data shapes).
+3. A command run at the end shows the parts fit (tests, build).
+
+`helper-start --role lead` adds two blocks to the contract, after TASK:
+
+- **PLAN**: one `part <n>:` line per part with what it does, the files it owns, the interface it exposes or consumes, and when it is done. No file belongs to two parts. Write the interfaces exactly: a subagent sees only its own part. Add `part 4:`, `part 5:` lines as needed; leave the first PLAN line as generated.
+- **CHECK**: the command that shows the parts fit.
+
+`send` refuses a lead with fewer than three parts or without CHECK. The lead counts as the one editor of its working tree. Its report lists each part with its outcome and then the CHECK result: check both against the code before telling the user it is done. Subagents do not show in the Herdr sidebar; the lead's pane is where the user watches.
 
 ## On receiving the report
 
@@ -57,7 +74,7 @@ Resume fails (`unknown_session`, or the agent starts empty): first check whether
 Optional, applied by the script. `.claude/herdr-routing.json` in the current checkout, then in the repository's main checkout, then `~/.claude/herdr-routing.json`; first found wins:
 
 ```json
-{ "coordinator": "opus", "reviewer": "opus", "builder": "sonnet", "investigator": "haiku" }
+{ "coordinator": "opus", "default": "sonnet", "reviewer": "opus", "subagent": "sonnet" }
 ```
 
-The key is the role. No file or no key: no `--model`, the agent uses the user's default. Never ask which model; never create or edit the file unless the user asks.
+The key is the role. `default` covers any role without its own key. `subagent` is the model for a lead's subagents; without it they follow the lead's model. No file, or no key and no `default`: no `--model`, the agent uses the user's Claude Code default, which is not necessarily the coordinator's model. `python3 "$CREW" map` shows the model each agent is really answering with. Never ask which model; never create or edit the file unless the user asks.

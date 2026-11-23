@@ -33,11 +33,22 @@ PLACEHOLDER = "<FILL"
 CONTRACT_TEMPLATE = """ROLE: <FILL: one line, what the helper is>
 CONTEXT: <FILL: repo, branch, checkout path, what another agent is editing at the same time>
 TASK: <FILL: what to do, criteria, what to ignore>
-COMPARISON_BASE: <FILL: ref to compare against, or n/a>
+{plan_block}COMPARISON_BASE: <FILL: ref to compare against, or n/a>
 LIMITS: {limits_first}; do not run git commit/push/checkout/stash; do not run commands that write
   to shared environments (<FILL: the repo's commands, or: anything that deploys, migrates a database, publishes a package or image, or writes to a remote service>); if you need an approval, stop and say so in the RETURN.
 FORMAT: <FILL: shape of the result, short>; end with the line END-{name}
 {return_block}"""
+
+LEAD_RULE = ("Start one subagent per part; each subagent edits only that part's files. You integrate, run CHECK "
+             "and fix what it shows. Do not skip or merge a part without saying so. Report each part with its "
+             "outcome, then the CHECK result.")
+PLAN_BLOCK = """PLAN: {rule}
+  part 1: <FILL: what | files: paths this part owns | interface: what it exposes or consumes | done when: check>
+  part 2: <FILL: same shape>
+  part 3: <FILL: same shape; add more part lines below when needed>
+CHECK: <FILL: the command that shows the parts fit>
+"""
+MODEL_RE = re.compile(r"^[A-Za-z0-9._:\[\]-]+$")
 
 RETURN_PROMPT = """RETURN: when done, run exactly:
   herdr agent prompt {ret} "<from: {name} task: {task_id}> <one-line status>
@@ -133,8 +144,8 @@ def main_checkout(cwd=None):
     return str(Path(so).parent) if code == 0 and so else None
 
 
-def routing_model(role):
-    """Model for a role from the first routing file found, else None."""
+def routing_model(role, fallback=True):
+    """Model for a role (else the file's `default`) from the first routing file found, else None."""
     candidates = []
     top = checkout_root()
     if top:
@@ -149,7 +160,10 @@ def routing_model(role):
                 data = json.loads(f.read_text())
                 if not isinstance(data, dict):
                     raise ValueError
-                return data.get(role), str(f)
+                model = data.get(role) or (data.get("default") if fallback else None)
+                if model is not None and not (isinstance(model, str) and MODEL_RE.match(model)):
+                    fail("bad_routing_file", f"{f}: `{model}` is not a model id or alias. Tell the user.")
+                return model, str(f)
             except ValueError:
                 fail("bad_routing_file", f"{f} is not valid JSON. Tell the user; do not edit it.")
     return None, None
@@ -247,8 +261,11 @@ def cmd_helper_start(a):
 
     # everything that can refuse is settled before any pane or agent is touched
     model, routing_file = routing_model(role)
+    sub_model = routing_model("subagent", fallback=False)[0] if role == "lead" else None
     if a.resume:
-        model = helpers[name].get("model")
+        model, sub_model = helpers[name].get("model"), helpers[name].get("subagent_model")
+    if role == "lead" and a.kind != "claude":
+        fail("lead_needs_claude", "Only a Claude helper can be a lead.")
     task_id = helpers[name]["task_id"] if a.resume else "t-" + uuid.uuid4().hex[:6]
     ret = helpers[name]["return"] if a.resume else ("file" if a.return_mode == "file" else return_address())
     top = helpers[name].get("cwd") if a.resume else checkout_root()
@@ -286,6 +303,12 @@ def cmd_helper_start(a):
     if reused and top:  # a reused shell may have wandered; a split already starts at the checkout root
         herdr("pane", "run", pane_id, "cd " + json.dumps(top))
         time.sleep(0.5)
+    if sub_model:  # the lead's subagents run on the routing file's `subagent` model
+        herdr("pane", "run", pane_id, f"export CLAUDE_CODE_SUBAGENT_MODEL={sub_model}")
+        time.sleep(0.5)
+    elif a.pane or reused:  # a reused pane may carry a previous lead's setting
+        herdr("pane", "run", pane_id, "unset CLAUDE_CODE_SUBAGENT_MODEL")
+        time.sleep(0.5)
     if a.pane:  # a worktree root pane: the helper's directory is that pane's, not ours
         top = next((p.get("cwd") for p in panes() if p["pane_id"] == pane_id), top)
     herdr("pane", "rename", pane_id, label)
@@ -305,17 +328,20 @@ def cmd_helper_start(a):
     report = d / "reports" / f"{name}.md"
     if not a.resume:
         limits_first = ("do not edit files" if role in READ_ONLY_ROLES else
-                        "<FILL: `do not edit files` for a run-only task, or `edit only inside <worktree path>`>")
+                        "<FILL: `do not edit files` for a run-only task, or `edit only inside` plus the worktree path>")
         block = (RETURN_FILE if ret == "file" else RETURN_PROMPT).format(
             name=name, ret=ret, task_id=task_id, report=report)
-        contract.write_text(CONTRACT_TEMPLATE.format(name=name, limits_first=limits_first, return_block=block))
+        contract.write_text(CONTRACT_TEMPLATE.format(
+            name=name, limits_first=limits_first, return_block=block,
+            plan_block=PLAN_BLOCK.format(rule=LEAD_RULE) if role == "lead" else ""))
     helpers[name] = {**helpers.get(name, {}), "pane_id": pane_id, "label": label, "kind": a.kind,
-                     "session_id": session_id if a.kind == "claude" else "-", "model": model, "cwd": top,
+                     "session_id": session_id if a.kind == "claude" else "-", "model": model, "subagent_model": sub_model, "cwd": top,
                      "task_id": task_id, "return": ret, "received": False, "ended": False}
     save_helpers(d, helpers)
 
     base = {"name": name, "pane_id": pane_id, "label": label, "session_id": helpers[name]["session_id"],
-            "model": model or "default", "routing_file": routing_file, "reused_pane": reused,
+            "model": model or "default", "subagent_model": (sub_model or "same as the lead") if role == "lead" else None,
+            "routing_file": routing_file, "reused_pane": reused,
             "task_id": task_id, "return": ret, "contract_file": str(contract), "report_file": str(report),
             "state_dir": str(d), "warning": warn}
     if not ok:
@@ -347,6 +373,12 @@ def cmd_send(a):
         fail("contract_incomplete", f"Fix {f}: missing blocks {missing}; unfilled placeholders: "
              f"{text.count(PLACEHOLDER)}. All seven blocks are required.")
     h = helpers[a.name]
+    if a.name.rsplit("-", 1)[0] == "lead":
+        parts = len(re.findall(r"^\s*part \d+:\s*\S", text, re.M))
+        check = re.search(r"^CHECK:\s*\S", text, re.M)
+        if parts < 3 or not check or LEAD_RULE not in text:
+            fail("plan_incomplete", f"A lead needs PLAN with at least 3 parts (found {parts}), a CHECK command "
+                 "and the generated PLAN rule unchanged. Fewer than 3 independent parts: use a builder.")
     if a.message:  # follow-up: the message plus the contract's own RETURN block
         i = text.find("RETURN:")
         if i < 0:
@@ -430,6 +462,23 @@ def cmd_map(a):
         except ValueError:
             pass
 
+    def model_of(session_id, passed):
+        """The model the agent last answered with, from its transcript; else what the script passed."""
+        if session_id and re.fullmatch(r"[0-9a-f-]{36}", session_id):
+            for f in (Path.home() / ".claude" / "projects").glob(f"*/{session_id}.jsonl"):
+                try:
+                    with open(f, "rb") as fh:
+                        fh.seek(max(0, f.stat().st_size - 200000))
+                        lines = fh.read().splitlines()
+                    for line in reversed(lines):  # only real answers: tool definitions also name models
+                        if b'"type":"assistant"' in line:
+                            m = re.search(rb'"model":"(claude-[^"]+)"', line)
+                            if m:
+                                return m.group(1).decode()
+                except OSError:
+                    pass
+        return f"{passed} (requested)" if passed else ""
+
     def branch_of(path):
         code, so, _ = sh(["git", "-C", path, "branch", "--show-current"]) if path else (1, "", "")
         return so if code == 0 else ""
@@ -454,7 +503,8 @@ def cmd_map(a):
                    "pane": f"{pl or '-'} ({p['pane_id']})", "agent": names.get(p["pane_id"]) or p.get("agent") or
                    (f"{n} (ended)" if n and h.get("ended") else "-"),
                    "status": p.get("agent_status", "-") if p.get("agent") else "shell",
-                   "session_id": sess, "here": p["pane_id"] == me}
+                   "session_id": sess, "model": model_of(sess, h.get("model")) if (p.get("agent") or n) else "",
+                   "here": p["pane_id"] == me}
             rows.append(row)
             if row["here"]:
                 here = {"pane": p["pane_id"], "workspace": row["workspace"], "checkout": path or p.get("cwd"),

@@ -32,6 +32,7 @@ python3 "$CREW" <subcommand>
 | Any other code edit, session in a main checkout | Worktree plus hand-off to a new coordinator there. | `references/starting-work.md` |
 | Any other code edit, session already in a worktree | Do it yourself in your checkout, or delegate. | `references/delegating.md` to delegate |
 | Review, test, investigate in parallel; any helper | Start a helper with a contract. | `references/delegating.md` |
+| A code edit that splits into three or more independent parts | One `lead` helper that fans out to subagents; you write the plan. | `references/delegating.md`, "Lead" |
 | Work in another repository or another worktree, any size | Worktree there plus a helper in its root pane. | `references/starting-work.md`, then `references/delegating.md` |
 | "Create a worktree", "isolate this in a branch" | `herdr worktree create` through the script. | `references/starting-work.md` |
 | "Remove the worktree" | Script checks, then removes. | `references/removing-worktrees.md` |
@@ -69,6 +70,6 @@ The announce line is for a worktree or hand-off the user did not ask for. Starti
 5. **One editor per working tree, and you count.** While a `builder` or `tester` helper edits your checkout, you only read there.
 6. **Commit, push and PR only on the user's explicit order.** For work a helper did, relay the order with the user's words (see `references/delegating.md`, "End of cycle"). `--force` on removal only when the user says force or discard.
 7. **Close only what you started**, and only panes inside a worktree the user asked to remove. End a helper with `crew.py end`, never by closing its pane. Never `git worktree add` inside Herdr.
-8. **State stays outside every checkout**, in the directory the script prints as `state_dir`. Never ask which model to use: the routing file or the user's default decides.
+8. **State stays outside every checkout**, in the directory the script prints as `state_dir`. Never ask which model to use: the routing file or the user's default decides. Say which model a helper started on in the line where you tell the user it started.
 
 More cases, each with its fix: `references/common-mistakes.md`.

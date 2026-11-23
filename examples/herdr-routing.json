@@ -1,0 +1,6 @@
+{
+  "coordinator": "opus",
+  "default": "sonnet",
+  "reviewer": "opus",
+  "subagent": "sonnet"
+}
